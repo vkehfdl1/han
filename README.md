@@ -96,6 +96,95 @@ hgl lsp                     Start LSP server (hover + completion)
 
 ---
 
+## What Han Can Do Right Now
+
+### ✅ Fully Working
+
+**Data types**
+- Integers (`정수`), floats (`실수`), strings (`문자열`), booleans (`불`)
+- Arrays with negative indexing — `arr[-1]` returns the last element
+- Structs with field access and mutation — `사람.이름 = "홍길동"`
+
+**Control flow**
+- `만약` / `아니면 만약` / `아니면` (if / else-if / else)
+- `반복` for-loop with init, condition, step
+- `동안` while-loop
+- `멈춰` (break), `계속` (continue)
+- `맞춰` pattern matching — integer, string, bool, wildcard `_`, binding
+
+**Functions**
+- Named functions with typed parameters and return types
+- Recursion (fibonacci, factorial, etc.)
+- Closures / anonymous functions with environment capture — `변수 f = 함수(x: 정수) { 반환 x * 2 }`
+- Closures passed as arguments (without type annotation)
+
+**Strings**
+- Concatenation with `+`
+- Methods: `.분리(sep)`, `.포함(s)`, `.바꾸기(from, to)`, `.앞뒤공백제거()`, `.대문자()`, `.소문자()`, `.시작(s)`, `.끝(s)`, `.길이()`
+- Character indexing — `문자열[0]`
+
+**Arrays**
+- Methods: `.추가(v)`, `.삭제(i)`, `.길이()`, `.포함(v)`, `.역순()`, `.정렬()`, `.합치기(sep)`
+- Index read/write — `arr[i]`, `arr[i] = v`
+- Negative indexing — `arr[-1]`
+
+**Structs & methods**
+- Define: `구조 사람 { 이름: 문자열, 나이: 정수 }`
+- Instantiate: `변수 p = 사람 { 이름: "홍길동", 나이: 30 }`
+- Impl block methods with `자신` (self): `구현 사람 { 함수 인사(자신: 사람) { ... } }`
+
+**Error handling**
+- `시도 { } 실패(오류) { }` — catches any runtime error including division by zero, file not found, out-of-bounds
+
+**File I/O**
+- `파일읽기("path")` — reads whole file to string
+- `파일쓰기("path", content)` — writes string to file
+- `파일추가("path", content)` — appends to file
+- `파일존재("path")` — returns bool
+
+**Math builtins**
+- `제곱근(x)`, `절댓값(x)`, `거듭제곱(밑, 지수)`
+- `정수변환(x)`, `실수변환(x)`, `길이(s)`
+
+**Format strings**
+- Named: `형식("이름: {이름}, 나이: {나이}")` — substitutes from current scope
+- Positional: `형식("이름: {0}, 나이: {1}", 이름, 나이)`
+
+**Modules**
+- `가져오기 "파일.hgl"` — runs another `.hgl` file in the current scope
+
+**Generics syntax**
+- `함수 최대값<T>(a: T, b: T) -> T` — type params are parsed and erased at runtime
+
+---
+
+### ⚠️ Partial / Edge Cases
+
+| Feature | Status |
+|---------|--------|
+| Functions as typed parameters | Syntax not yet supported — `f: 함수` fails. Pass closures without type annotation. |
+| `없음` as a literal value | Cannot write `변수 x = 없음` yet — parser doesn't handle `없음` as expression |
+| Float + Int mixed arithmetic | No implicit coercion — `1 + 1.5` fails. Use `실수변환(1) + 1.5` |
+| Nested struct field mutation | `a.b.c = v` not supported — only one level deep |
+| Closures in `맞춰` arm | Works, but arm body must use `{ }` block syntax |
+| `hgl build` with arrays/structs | Codegen stubs for arrays/structs — interpreter only for those features |
+
+---
+
+### ❌ Not Yet Implemented
+
+| Feature | Notes |
+|---------|-------|
+| Multi-return / tuples | No tuple type yet |
+| Enums | No `열거` keyword yet |
+| Null safety / Option type | No `없음?` or Option<T> |
+| Async / concurrency | Single-threaded only |
+| Standard library: network, process | No HTTP, no subprocess |
+| Garbage collection | Reference counting only via `Rc<RefCell<>>` — cycles leak |
+| Tail call optimization | Deep recursion will stack overflow |
+
+---
+
 ## Why Han?
 
 <details>

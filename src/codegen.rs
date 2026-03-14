@@ -9,6 +9,7 @@ pub struct CodeGen {
     str_count: usize,
     loop_stack: Vec<(String, String)>,
     var_types: HashMap<String, &'static str>,
+    struct_defs: HashMap<String, Vec<String>>,
 }
 
 impl CodeGen {
@@ -21,6 +22,7 @@ impl CodeGen {
             str_count: 0,
             loop_stack: Vec::new(),
             var_types: HashMap::new(),
+            struct_defs: HashMap::new(),
         }
     }
 
@@ -100,6 +102,8 @@ impl CodeGen {
             },
             Expr::Identifier(name) => self.var_types.get(name.as_str()).copied().unwrap_or("i64"),
             Expr::Call { name, .. } => self.var_types.get(name.as_str()).copied().unwrap_or("i64"),
+            Expr::ArrayLiteral(_) => "i64*",
+            Expr::Index { .. } => "i64",
             _ => "i64",
         }
     }
@@ -235,19 +239,129 @@ impl CodeGen {
                 self.emit(&format!("  {} = call {} @{}({})", t, ret_ty, name, arg_str));
                 t
             }
-            Expr::ArrayLiteral(_)
-            | Expr::Index { .. }
-            | Expr::IndexAssign { .. }
-            | Expr::MethodCall { .. }
-            | Expr::FieldAccess { .. }
-            | Expr::FieldAssign { .. }
-            | Expr::StructLiteral { .. }
-            | Expr::Lambda { .. } => {
+            Expr::ArrayLiteral(elems) => {
+                let count = elems.len();
+                let byte_size = count * 8;
+
+                let mem = self.fresh_temp();
+                self.emit(&format!("  {} = call i8* @malloc(i64 {})", mem, byte_size));
+
+                let data_ptr = self.fresh_temp();
+                self.emit(&format!("  {} = bitcast i8* {} to i64*", data_ptr, mem));
+
+                for (i, elem) in elems.iter().enumerate() {
+                    let val = self.gen_expr(elem);
+                    let elem_ptr = self.fresh_temp();
+                    self.emit(&format!(
+                        "  {} = getelementptr inbounds i64, i64* {}, i64 {}",
+                        elem_ptr, data_ptr, i
+                    ));
+                    self.emit(&format!("  store i64 {}, i64* {}", val, elem_ptr));
+                }
+
+                data_ptr
+            }
+
+            Expr::Index { object, index } => {
+                let arr_ptr = self.gen_expr(object);
+                let idx = self.gen_expr(index);
+                let elem_ptr = self.fresh_temp();
+                self.emit(&format!(
+                    "  {} = getelementptr inbounds i64, i64* {}, i64 {}",
+                    elem_ptr, arr_ptr, idx
+                ));
+                let val = self.fresh_temp();
+                self.emit(&format!("  {} = load i64, i64* {}", val, elem_ptr));
+                val
+            }
+
+            Expr::IndexAssign {
+                object,
+                index,
+                value,
+            } => {
+                let arr_ptr = self.gen_expr(object);
+                let idx = self.gen_expr(index);
+                let val = self.gen_expr(value);
+                let elem_ptr = self.fresh_temp();
+                self.emit(&format!(
+                    "  {} = getelementptr inbounds i64, i64* {}, i64 {}",
+                    elem_ptr, arr_ptr, idx
+                ));
+                self.emit(&format!("  store i64 {}, i64* {}", val, elem_ptr));
+                val
+            }
+
+            Expr::StructLiteral { name, fields } => {
+                let field_defs = self.struct_defs.get(name).cloned().unwrap_or_default();
+                let num_fields = field_defs.len().max(fields.len());
+                let byte_size = num_fields * 8;
+
+                let mem = self.fresh_temp();
+                self.emit(&format!("  {} = call i8* @malloc(i64 {})", mem, byte_size));
+                let data_ptr = self.fresh_temp();
+                self.emit(&format!("  {} = bitcast i8* {} to i64*", data_ptr, mem));
+
+                for (fname, fexpr) in fields {
+                    let idx = field_defs.iter().position(|n| n == fname).unwrap_or(0);
+                    let val = self.gen_expr(fexpr);
+                    let fptr = self.fresh_temp();
+                    self.emit(&format!(
+                        "  {} = getelementptr inbounds i64, i64* {}, i64 {}",
+                        fptr, data_ptr, idx
+                    ));
+                    self.emit(&format!("  store i64 {}, i64* {}", val, fptr));
+                }
+                data_ptr
+            }
+
+            Expr::FieldAccess { object, field } => {
+                let obj_ptr = self.gen_expr(object);
+                let idx = self.find_field_index(object, field);
+                let fptr = self.fresh_temp();
+                self.emit(&format!(
+                    "  {} = getelementptr inbounds i64, i64* {}, i64 {}",
+                    fptr, obj_ptr, idx
+                ));
+                let val = self.fresh_temp();
+                self.emit(&format!("  {} = load i64, i64* {}", val, fptr));
+                val
+            }
+
+            Expr::FieldAssign {
+                object,
+                field,
+                value,
+            } => {
+                let obj_ptr = self.gen_expr(object);
+                let idx = self.find_field_index(object, field);
+                let val = self.gen_expr(value);
+                let fptr = self.fresh_temp();
+                self.emit(&format!(
+                    "  {} = getelementptr inbounds i64, i64* {}, i64 {}",
+                    fptr, obj_ptr, idx
+                ));
+                self.emit(&format!("  store i64 {}, i64* {}", val, fptr));
+                val
+            }
+
+            Expr::MethodCall { .. } | Expr::Lambda { .. } => {
                 let t = self.fresh_temp();
                 self.emit(&format!("  {} = add nsw i64 0, 0", t));
                 t
             }
         }
+    }
+
+    fn find_field_index(&self, object: &Expr, field: &str) -> usize {
+        if let Expr::Identifier(name) = object {
+            if let Some(struct_name) = self.var_types.get(name.as_str()) {
+                if let Some(fields) = self.struct_defs.get(*struct_name) {
+                    return fields.iter().position(|f| f == field).unwrap_or(0);
+                }
+            }
+        }
+        0
     }
 
     fn gen_str_concat(&mut self, left: &Expr, right: &Expr) -> String {
@@ -481,7 +595,10 @@ impl CodeGen {
                 }
             }
             StmtKind::FuncDef { .. } => {}
-            StmtKind::StructDef { .. } => {}
+            StmtKind::StructDef { name, fields } => {
+                let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+                self.struct_defs.insert(name.clone(), field_names);
+            }
             StmtKind::TryCatch {
                 try_block,
                 catch_block,
@@ -496,12 +613,60 @@ impl CodeGen {
             }
             StmtKind::Import(_) => {}
             StmtKind::Match { expr, arms } => {
-                self.gen_expr(expr);
-                for arm in arms {
+                let val = self.gen_expr(expr);
+                let end_lbl = format!("match_end{}", self.fresh_label());
+
+                for (i, arm) in arms.iter().enumerate() {
+                    let arm_lbl = format!("match_arm{}_{}", self.label_count, i);
+                    let next_lbl = if i + 1 < arms.len() {
+                        format!("match_test{}_{}", self.label_count, i + 1)
+                    } else {
+                        end_lbl.clone()
+                    };
+
+                    match &arm.pattern {
+                        crate::ast::Pattern::Wildcard | crate::ast::Pattern::Identifier(_) => {
+                            self.emit(&format!("  br label %{}", arm_lbl));
+                        }
+                        crate::ast::Pattern::IntLiteral(n) => {
+                            let cmp = self.fresh_temp();
+                            self.emit(&format!("  {} = icmp eq i64 {}, {}", cmp, val, n));
+                            self.emit(&format!(
+                                "  br i1 {}, label %{}, label %{}",
+                                cmp, arm_lbl, next_lbl
+                            ));
+                        }
+                        crate::ast::Pattern::BoolLiteral(b) => {
+                            let bv = if *b { 1 } else { 0 };
+                            let cmp = self.fresh_temp();
+                            self.emit(&format!("  {} = icmp eq i64 {}, {}", cmp, val, bv));
+                            self.emit(&format!(
+                                "  br i1 {}, label %{}, label %{}",
+                                cmp, arm_lbl, next_lbl
+                            ));
+                        }
+                        _ => {
+                            self.emit(&format!("  br label %{}", arm_lbl));
+                        }
+                    }
+
+                    self.emit(&format!("{}:", arm_lbl));
                     for s in &arm.body {
                         self.gen_stmt(s);
                     }
+                    self.emit(&format!("  br label %{}", end_lbl));
+
+                    if i + 1 < arms.len()
+                        && !matches!(
+                            arm.pattern,
+                            crate::ast::Pattern::Wildcard | crate::ast::Pattern::Identifier(_)
+                        )
+                    {
+                        self.emit(&format!("{}:", next_lbl));
+                    }
                 }
+
+                self.emit(&format!("{}:", end_lbl));
             }
             StmtKind::ImplBlock { .. } => {}
         }
@@ -559,6 +724,14 @@ impl CodeGen {
         let mut func_defs: Vec<&Stmt> = Vec::new();
         let mut top_level: Vec<&Stmt> = Vec::new();
         let mut has_main = false;
+
+        // first pass: collect struct definitions
+        for stmt in &program.stmts {
+            if let StmtKind::StructDef { name, fields } = &stmt.kind {
+                let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+                self.struct_defs.insert(name.clone(), field_names);
+            }
+        }
 
         for stmt in &program.stmts {
             match &stmt.kind {

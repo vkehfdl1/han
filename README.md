@@ -24,7 +24,18 @@ Han was born from the idea that programming doesn't have to look the same in eve
 - **Compiled language** — generates LLVM IR → clang → native binary
 - **Interpreter mode** — run instantly without clang
 - **REPL** — interactive mode with `hgl repl`
+- **LSP server** — `hgl lsp` for editor hover docs and completion
 - **Static typing** — 5 primitive types: `정수` (int), `실수` (float), `문자열` (string), `불` (bool), `없음` (void)
+- **Arrays** — `[1, 2, 3]`, indexing, negative indexing, `.추가/.삭제/.정렬/.역순` etc.
+- **Structs** — `구조 사람 { 이름: 문자열 }` with field access and impl blocks
+- **Closures** — `변수 f = 함수(x: 정수) { 반환 x * 2 }` with env capture
+- **Pattern matching** — `맞춰 값 { 1 => ..., _ => ... }`
+- **Error handling** — `시도 { } 실패(오류) { }` try/catch
+- **File I/O** — `파일읽기`, `파일쓰기`, `파일추가`, `파일존재`
+- **Format strings** — `형식("이름: {0}", 이름)` positional or `형식("이름: {이름}")` named
+- **String methods** — `.분리`, `.포함`, `.바꾸기`, `.대문자`, `.소문자`, etc.
+- **Module imports** — `가져오기 "파일.hgl"`
+- **Generics syntax** — `함수 최대값<T>(a: T, b: T) -> T`
 - **Built-in math** — `제곱근`, `절댓값`, `거듭제곱`, `정수변환`, `실수변환`, `길이`
 
 ---
@@ -80,6 +91,7 @@ hgl interpret <file.hgl>    Run with interpreter (no clang needed)
 hgl build <file.hgl>        Compile to native binary (requires clang)
 hgl run <file.hgl>          Compile and run immediately
 hgl repl                    Interactive REPL
+hgl lsp                     Start LSP server (hover + completion)
 ```
 
 ---
@@ -347,7 +359,8 @@ han/
 │   ├── parser.rs        Parser: tokens → AST (recursive descent)
 │   ├── ast.rs           AST node type definitions
 │   ├── interpreter.rs   Tree-walking interpreter
-│   └── codegen.rs       LLVM IR text code generator
+│   ├── codegen.rs       LLVM IR text code generator
+│   └── lsp.rs           LSP server (hover + completion)
 ├── examples/            Example .hgl programs
 ├── spec/
 │   └── SPEC.md          Formal language specification (EBNF)

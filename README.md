@@ -244,19 +244,10 @@ han: 1
 ```bash
 git clone https://github.com/xodn348/han.git
 cd han
-cargo install --path .
+./install.sh
 ```
 
-That's it. `hgl` is now available globally.
-
-### VS Code Extension
-
-```bash
-cd editors/vscode
-npm install && npm run compile
-```
-
-Then open the `editors/vscode` folder in VS Code and press `F5` to launch with syntax highlighting + LSP support.
+This installs `hgl` globally and automatically sets up the VS Code extension (syntax highlighting + LSP) if VS Code is detected.
 
 ---
 

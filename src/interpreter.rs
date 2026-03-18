@@ -1363,6 +1363,281 @@ fn eval_builtin_math(
                 _ => Err(RuntimeError::new("전치: 배열 타입 필요", line)),
             }
         }
+        "스칼라곱" => {
+            if args.len() != 2 {
+                return Err(RuntimeError::new(
+                    "스칼라곱: 인자 2개 필요 (행렬, 스칼라)",
+                    line,
+                ));
+            }
+            let mat = eval_expr(&args[0], env, line)?;
+            let scalar = eval_expr(&args[1], env, line)?;
+            let s = match &scalar {
+                Value::Int(n) => *n as f64,
+                Value::Float(f) => *f,
+                _ => return Err(RuntimeError::new("스칼라곱: 두 번째 인자는 숫자", line)),
+            };
+            match mat {
+                Value::Array(rows) => {
+                    let rows = rows.borrow();
+                    let mut result = Vec::with_capacity(rows.len());
+                    for row in rows.iter() {
+                        match row {
+                            Value::Array(r) => {
+                                let r = r.borrow();
+                                let new_row: Vec<Value> = r
+                                    .iter()
+                                    .map(|v| {
+                                        let val = match v {
+                                            Value::Int(n) => *n as f64,
+                                            Value::Float(f) => *f,
+                                            _ => 0.0,
+                                        };
+                                        Value::Float(val * s)
+                                    })
+                                    .collect();
+                                result.push(Value::Array(Rc::new(RefCell::new(new_row))));
+                            }
+                            _ => return Err(RuntimeError::new("스칼라곱: 2차원 배열 필요", line)),
+                        }
+                    }
+                    Ok(Some(Value::Array(Rc::new(RefCell::new(result)))))
+                }
+                _ => Err(RuntimeError::new(
+                    "스칼라곱: 첫 번째 인자는 2차원 배열",
+                    line,
+                )),
+            }
+        }
+        "내적" => {
+            if args.len() != 2 {
+                return Err(RuntimeError::new("내적: 인자 2개 필요", line));
+            }
+            let a = eval_expr(&args[0], env, line)?;
+            let b = eval_expr(&args[1], env, line)?;
+            match (a, b) {
+                (Value::Array(av), Value::Array(bv)) => {
+                    let av = av.borrow();
+                    let bv = bv.borrow();
+                    if av.len() != bv.len() {
+                        return Err(RuntimeError::new("내적: 벡터 길이가 같아야 합니다", line));
+                    }
+                    let mut sum = 0.0_f64;
+                    for i in 0..av.len() {
+                        let a_val = match &av[i] {
+                            Value::Int(n) => *n as f64,
+                            Value::Float(f) => *f,
+                            _ => return Err(RuntimeError::new("내적: 숫자 타입 필요", line)),
+                        };
+                        let b_val = match &bv[i] {
+                            Value::Int(n) => *n as f64,
+                            Value::Float(f) => *f,
+                            _ => return Err(RuntimeError::new("내적: 숫자 타입 필요", line)),
+                        };
+                        sum += a_val * b_val;
+                    }
+                    Ok(Some(Value::Float(sum)))
+                }
+                _ => Err(RuntimeError::new("내적: 1차원 배열 2개 필요", line)),
+            }
+        }
+        "외적" => {
+            if args.len() != 2 {
+                return Err(RuntimeError::new("외적: 인자 2개 필요 (3차원 벡터)", line));
+            }
+            let a = eval_expr(&args[0], env, line)?;
+            let b = eval_expr(&args[1], env, line)?;
+            match (a, b) {
+                (Value::Array(av), Value::Array(bv)) => {
+                    let av = av.borrow();
+                    let bv = bv.borrow();
+                    if av.len() != 3 || bv.len() != 3 {
+                        return Err(RuntimeError::new("외적: 3차원 벡터만 지원", line));
+                    }
+                    let g = |arr: &[Value], i: usize| -> Result<f64, RuntimeError> {
+                        match &arr[i] {
+                            Value::Int(n) => Ok(*n as f64),
+                            Value::Float(f) => Ok(*f),
+                            _ => Err(RuntimeError::new("외적: 숫자 타입 필요", line)),
+                        }
+                    };
+                    let (a0, a1, a2) = (g(&av, 0)?, g(&av, 1)?, g(&av, 2)?);
+                    let (b0, b1, b2) = (g(&bv, 0)?, g(&bv, 1)?, g(&bv, 2)?);
+                    Ok(Some(Value::Array(Rc::new(RefCell::new(vec![
+                        Value::Float(a1 * b2 - a2 * b1),
+                        Value::Float(a2 * b0 - a0 * b2),
+                        Value::Float(a0 * b1 - a1 * b0),
+                    ])))))
+                }
+                _ => Err(RuntimeError::new("외적: 1차원 배열 2개 필요", line)),
+            }
+        }
+        "행렬합" => {
+            if args.len() != 2 {
+                return Err(RuntimeError::new("행렬합: 인자 2개 필요", line));
+            }
+            let a = eval_expr(&args[0], env, line)?;
+            let b = eval_expr(&args[1], env, line)?;
+            match (a, b) {
+                (Value::Array(ar), Value::Array(br)) => {
+                    let ar = ar.borrow();
+                    let br = br.borrow();
+                    if ar.len() != br.len() {
+                        return Err(RuntimeError::new("행렬합: 행렬 크기가 같아야 합니다", line));
+                    }
+                    let mut result = Vec::with_capacity(ar.len());
+                    for i in 0..ar.len() {
+                        match (&ar[i], &br[i]) {
+                            (Value::Array(a), Value::Array(b)) => {
+                                let a = a.borrow();
+                                let b = b.borrow();
+                                let row: Vec<Value> = a
+                                    .iter()
+                                    .zip(b.iter())
+                                    .map(|(x, y)| {
+                                        let xv = match x {
+                                            Value::Int(n) => *n as f64,
+                                            Value::Float(f) => *f,
+                                            _ => 0.0,
+                                        };
+                                        let yv = match y {
+                                            Value::Int(n) => *n as f64,
+                                            Value::Float(f) => *f,
+                                            _ => 0.0,
+                                        };
+                                        Value::Float(xv + yv)
+                                    })
+                                    .collect();
+                                result.push(Value::Array(Rc::new(RefCell::new(row))));
+                            }
+                            _ => return Err(RuntimeError::new("행렬합: 2차원 배열 필요", line)),
+                        }
+                    }
+                    Ok(Some(Value::Array(Rc::new(RefCell::new(result)))))
+                }
+                _ => Err(RuntimeError::new("행렬합: 2차원 배열 필요", line)),
+            }
+        }
+        "행렬차" => {
+            if args.len() != 2 {
+                return Err(RuntimeError::new("행렬차: 인자 2개 필요", line));
+            }
+            let a = eval_expr(&args[0], env, line)?;
+            let b = eval_expr(&args[1], env, line)?;
+            match (a, b) {
+                (Value::Array(ar), Value::Array(br)) => {
+                    let ar = ar.borrow();
+                    let br = br.borrow();
+                    if ar.len() != br.len() {
+                        return Err(RuntimeError::new("행렬차: 행렬 크기가 같아야 합니다", line));
+                    }
+                    let mut result = Vec::with_capacity(ar.len());
+                    for i in 0..ar.len() {
+                        match (&ar[i], &br[i]) {
+                            (Value::Array(a), Value::Array(b)) => {
+                                let a = a.borrow();
+                                let b = b.borrow();
+                                let row: Vec<Value> = a
+                                    .iter()
+                                    .zip(b.iter())
+                                    .map(|(x, y)| {
+                                        let xv = match x {
+                                            Value::Int(n) => *n as f64,
+                                            Value::Float(f) => *f,
+                                            _ => 0.0,
+                                        };
+                                        let yv = match y {
+                                            Value::Int(n) => *n as f64,
+                                            Value::Float(f) => *f,
+                                            _ => 0.0,
+                                        };
+                                        Value::Float(xv - yv)
+                                    })
+                                    .collect();
+                                result.push(Value::Array(Rc::new(RefCell::new(row))));
+                            }
+                            _ => return Err(RuntimeError::new("행렬차: 2차원 배열 필요", line)),
+                        }
+                    }
+                    Ok(Some(Value::Array(Rc::new(RefCell::new(result)))))
+                }
+                _ => Err(RuntimeError::new("행렬차: 2차원 배열 필요", line)),
+            }
+        }
+        "단위행렬" => {
+            if args.len() != 1 {
+                return Err(RuntimeError::new("단위행렬: 인자 1개 필요 (크기)", line));
+            }
+            let v = eval_expr(&args[0], env, line)?;
+            let n = match v {
+                Value::Int(n) => n as usize,
+                _ => return Err(RuntimeError::new("단위행렬: 정수 필요", line)),
+            };
+            let mut result = Vec::with_capacity(n);
+            for i in 0..n {
+                let mut row = vec![Value::Float(0.0); n];
+                row[i] = Value::Float(1.0);
+                result.push(Value::Array(Rc::new(RefCell::new(row))));
+            }
+            Ok(Some(Value::Array(Rc::new(RefCell::new(result)))))
+        }
+        "텐서곱" => {
+            if args.len() != 2 {
+                return Err(RuntimeError::new("텐서곱: 인자 2개 필요", line));
+            }
+            let a = eval_expr(&args[0], env, line)?;
+            let b = eval_expr(&args[1], env, line)?;
+            match (a, b) {
+                (Value::Array(a_rows), Value::Array(b_rows)) => {
+                    let a_rows = a_rows.borrow();
+                    let b_rows = b_rows.borrow();
+                    let am = a_rows.len();
+                    let bm = b_rows.len();
+                    let an = match &a_rows[0] {
+                        Value::Array(r) => r.borrow().len(),
+                        _ => return Err(RuntimeError::new("텐서곱: 2차원 배열 필요", line)),
+                    };
+                    let bn = match &b_rows[0] {
+                        Value::Array(r) => r.borrow().len(),
+                        _ => return Err(RuntimeError::new("텐서곱: 2차원 배열 필요", line)),
+                    };
+                    let mut result = Vec::with_capacity(am * bm);
+                    for i in 0..am {
+                        let a_row = match &a_rows[i] {
+                            Value::Array(r) => r.borrow().clone(),
+                            _ => return Err(RuntimeError::new("텐서곱: 2차원 배열 필요", line)),
+                        };
+                        for k in 0..bm {
+                            let b_row = match &b_rows[k] {
+                                Value::Array(r) => r.borrow().clone(),
+                                _ => {
+                                    return Err(RuntimeError::new("텐서곱: 2차원 배열 필요", line))
+                                }
+                            };
+                            let mut row = Vec::with_capacity(an * bn);
+                            for j in 0..an {
+                                let av = match &a_row[j] {
+                                    Value::Int(n) => *n as f64,
+                                    Value::Float(f) => *f,
+                                    _ => 0.0,
+                                };
+                                for l in 0..bn {
+                                    let bv = match &b_row[l] {
+                                        Value::Int(n) => *n as f64,
+                                        Value::Float(f) => *f,
+                                        _ => 0.0,
+                                    };
+                                    row.push(Value::Float(av * bv));
+                                }
+                            }
+                            result.push(Value::Array(Rc::new(RefCell::new(row))));
+                        }
+                    }
+                    Ok(Some(Value::Array(Rc::new(RefCell::new(result)))))
+                }
+                _ => Err(RuntimeError::new("텐서곱: 2차원 배열 필요", line)),
+            }
+        }
         _ => Ok(None),
     }
 }

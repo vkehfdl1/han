@@ -53,7 +53,7 @@ Source (.hgl)
 ```
 src/builtins/
 ├── mod.rs      — module declarations
-├── math.rs     — 제곱근, 절댓값, 거듭제곱, 정수변환, 실수변환
+├── math.rs     — 제곱근, 절댓값, 거듭제곱, 정수변환, 실수변환, 행렬곱, 전치
 ├── io.rs       — 출력, 입력, 형식, 파일읽기/쓰기
 ├── string.rs   — 길이, 분리, 포함, 바꾸기, 대문자, 소문자
 └── system.rs   — 실행, HTTP, 정규식, 제이슨, 날짜/시간

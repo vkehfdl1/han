@@ -64,7 +64,7 @@ Han is a statically-typed, compiled programming language where every keyword is 
 - **String methods** — `.분리`, `.포함`, `.바꾸기`, `.대문자`, `.소문자`, etc.
 - **Module imports** — `포함 "파일.hgl"`
 - **Generics syntax** — `함수 최대값<T>(a: T, b: T) -> T`
-- **Built-in math** — `제곱근`, `절댓값`, `거듭제곱`, `정수변환`, `실수변환`, `길이`
+- **Built-in math** — `제곱근`, `절댓값`, `거듭제곱`, `정수변환`, `실수변환`, `길이`, `행렬곱`, `전치`
 - **HashMap** — `사전("키", 값)` with `.키목록()`, `.값목록()`, `.포함()`, `.삭제()`
 - **JSON** — `제이슨_파싱()`, `제이슨_생성()` via serde_json
 - **HTTP** — `HTTP_포함(url)`, `HTTP_보내기(url, body)` via reqwest
@@ -375,6 +375,7 @@ hgl lsp                     Start LSP server (hover + completion)
 **Math builtins**
 - `제곱근(x)`, `절댓값(x)`, `거듭제곱(밑, 지수)`
 - `정수변환(x)`, `실수변환(x)`, `길이(s)`
+- `행렬곱(A, B)`, `전치(A)` — matrix operations for 2D arrays
 
 **Format strings**
 - Named: `형식("이름: {이름}, 나이: {나이}")` — substitutes from current scope

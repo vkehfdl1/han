@@ -75,6 +75,8 @@ This page is optimized for LLM consumption. It contains every keyword, type, bui
 정수변환(x)              → int(x) → 정수
 실수변환(x)              → float(x) → 실수
 길이(s)                  → len(s) → 정수
+행렬곱(A, B)             → matrix multiply → [[실수]]
+전치(A)                  → matrix transpose → [[실수]]
 형식(template, args...)  → format string / interpolation target → 문자열
 파일읽기(경로)            → read file → 문자열
 파일쓰기(경로, 내용)      → write file

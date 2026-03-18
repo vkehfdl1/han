@@ -1278,6 +1278,191 @@ fn eval_builtin_math(
                 _ => Err(RuntimeError::new("길이: 문자열 타입 필요", line)),
             }
         }
+        "사인" => {
+            if args.len() != 1 {
+                return Err(RuntimeError::new("사인: 인자 1개 필요", line));
+            }
+            let v = eval_expr(&args[0], env, line)?;
+            let x = match v {
+                Value::Int(n) => n as f64,
+                Value::Float(f) => f,
+                _ => return Err(RuntimeError::new("사인: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(x.sin())))
+        }
+        "코사인" => {
+            if args.len() != 1 {
+                return Err(RuntimeError::new("코사인: 인자 1개 필요", line));
+            }
+            let v = eval_expr(&args[0], env, line)?;
+            let x = match v {
+                Value::Int(n) => n as f64,
+                Value::Float(f) => f,
+                _ => return Err(RuntimeError::new("코사인: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(x.cos())))
+        }
+        "탄젠트" => {
+            if args.len() != 1 {
+                return Err(RuntimeError::new("탄젠트: 인자 1개 필요", line));
+            }
+            let v = eval_expr(&args[0], env, line)?;
+            let x = match v {
+                Value::Int(n) => n as f64,
+                Value::Float(f) => f,
+                _ => return Err(RuntimeError::new("탄젠트: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(x.tan())))
+        }
+        "로그" => {
+            if args.len() != 1 {
+                return Err(RuntimeError::new("로그: 인자 1개 필요 (자연로그)", line));
+            }
+            let v = eval_expr(&args[0], env, line)?;
+            let x = match v {
+                Value::Int(n) => n as f64,
+                Value::Float(f) => f,
+                _ => return Err(RuntimeError::new("로그: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(x.ln())))
+        }
+        "로그10" => {
+            if args.len() != 1 {
+                return Err(RuntimeError::new("로그10: 인자 1개 필요", line));
+            }
+            let v = eval_expr(&args[0], env, line)?;
+            let x = match v {
+                Value::Int(n) => n as f64,
+                Value::Float(f) => f,
+                _ => return Err(RuntimeError::new("로그10: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(x.log10())))
+        }
+        "지수" => {
+            if args.len() != 1 {
+                return Err(RuntimeError::new("지수: 인자 1개 필요 (e^x)", line));
+            }
+            let v = eval_expr(&args[0], env, line)?;
+            let x = match v {
+                Value::Int(n) => n as f64,
+                Value::Float(f) => f,
+                _ => return Err(RuntimeError::new("지수: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(x.exp())))
+        }
+        "올림" => {
+            if args.len() != 1 {
+                return Err(RuntimeError::new("올림: 인자 1개 필요", line));
+            }
+            let v = eval_expr(&args[0], env, line)?;
+            let x = match v {
+                Value::Int(n) => n as f64,
+                Value::Float(f) => f,
+                _ => return Err(RuntimeError::new("올림: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(x.ceil())))
+        }
+        "내림" => {
+            if args.len() != 1 {
+                return Err(RuntimeError::new("내림: 인자 1개 필요", line));
+            }
+            let v = eval_expr(&args[0], env, line)?;
+            let x = match v {
+                Value::Int(n) => n as f64,
+                Value::Float(f) => f,
+                _ => return Err(RuntimeError::new("내림: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(x.floor())))
+        }
+        "반올림" => {
+            if args.len() != 1 {
+                return Err(RuntimeError::new("반올림: 인자 1개 필요", line));
+            }
+            let v = eval_expr(&args[0], env, line)?;
+            let x = match v {
+                Value::Int(n) => n as f64,
+                Value::Float(f) => f,
+                _ => return Err(RuntimeError::new("반올림: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(x.round())))
+        }
+        "최대" => {
+            if args.len() != 2 {
+                return Err(RuntimeError::new("최대: 인자 2개 필요", line));
+            }
+            let a = eval_expr(&args[0], env, line)?;
+            let b = eval_expr(&args[1], env, line)?;
+            let av = match &a {
+                Value::Int(n) => *n as f64,
+                Value::Float(f) => *f,
+                _ => return Err(RuntimeError::new("최대: 숫자 필요", line)),
+            };
+            let bv = match &b {
+                Value::Int(n) => *n as f64,
+                Value::Float(f) => *f,
+                _ => return Err(RuntimeError::new("최대: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(av.max(bv))))
+        }
+        "최소" => {
+            if args.len() != 2 {
+                return Err(RuntimeError::new("최소: 인자 2개 필요", line));
+            }
+            let a = eval_expr(&args[0], env, line)?;
+            let b = eval_expr(&args[1], env, line)?;
+            let av = match &a {
+                Value::Int(n) => *n as f64,
+                Value::Float(f) => *f,
+                _ => return Err(RuntimeError::new("최소: 숫자 필요", line)),
+            };
+            let bv = match &b {
+                Value::Int(n) => *n as f64,
+                Value::Float(f) => *f,
+                _ => return Err(RuntimeError::new("최소: 숫자 필요", line)),
+            };
+            Ok(Some(Value::Float(av.min(bv))))
+        }
+        "난수" => {
+            if args.is_empty() {
+                let r: f64 = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .subsec_nanos() as f64
+                    / 1_000_000_000.0;
+                Ok(Some(Value::Float(r)))
+            } else if args.len() == 2 {
+                let a = match eval_expr(&args[0], env, line)? {
+                    Value::Int(n) => n,
+                    _ => return Err(RuntimeError::new("난수: 정수 필요", line)),
+                };
+                let b = match eval_expr(&args[1], env, line)? {
+                    Value::Int(n) => n,
+                    _ => return Err(RuntimeError::new("난수: 정수 필요", line)),
+                };
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .subsec_nanos() as i64;
+                Ok(Some(Value::Int(a + (nanos.abs() % (b - a + 1)))))
+            } else {
+                Err(RuntimeError::new(
+                    "난수: 인자 0개 또는 2개 필요 (최소, 최대)",
+                    line,
+                ))
+            }
+        }
+        "파이" => {
+            if !args.is_empty() {
+                return Err(RuntimeError::new("파이: 인자 없음", line));
+            }
+            Ok(Some(Value::Float(std::f64::consts::PI)))
+        }
+        "자연상수" => {
+            if !args.is_empty() {
+                return Err(RuntimeError::new("자연상수: 인자 없음", line));
+            }
+            Ok(Some(Value::Float(std::f64::consts::E)))
+        }
         "행렬곱" => {
             if args.len() != 2 {
                 return Err(RuntimeError::new("행렬곱: 인자 2개 필요 (A, B)", line));

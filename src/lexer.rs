@@ -58,6 +58,7 @@ pub enum Token {
     // 논리 연산자
     AmpAmp,   // &&
     PipePipe, // ||
+    PipeGt,   // |>
     Bang,     // !
     // 할당 연산자
     Eq,      // =
@@ -387,6 +388,9 @@ impl Lexer {
                 if self.peek() == Some('|') {
                     self.advance();
                     Token::PipePipe
+                } else if self.peek() == Some('>') {
+                    self.advance();
+                    Token::PipeGt
                 } else {
                     return None;
                 }

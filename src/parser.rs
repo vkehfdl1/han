@@ -427,7 +427,33 @@ impl Parser {
     // ── Expression parsing (precedence climbing) ──────────────────────────────
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
-        self.parse_assignment()
+        self.parse_pipe()
+    }
+
+    fn parse_pipe(&mut self) -> Result<Expr, ParseError> {
+        let mut left = self.parse_assignment()?;
+        while matches!(self.peek(), Token::PipeGt) {
+            self.advance();
+            let right = self.parse_assignment()?;
+            left = match right {
+                Expr::Call { name, mut args } => {
+                    args.insert(0, left);
+                    Expr::Call { name, args }
+                }
+                Expr::Identifier(name) => Expr::Call {
+                    name,
+                    args: vec![left],
+                },
+                _ => {
+                    let (line, _) = self.peek_pos();
+                    return Err(ParseError::new(
+                        "|> 오른쪽에 함수 이름 또는 호출 필요",
+                        line,
+                    ));
+                }
+            };
+        }
+        Ok(left)
     }
 
     fn parse_assignment(&mut self) -> Result<Expr, ParseError> {

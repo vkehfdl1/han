@@ -1429,7 +1429,9 @@ mod tests {
                 Expr::Call { name, args } => {
                     assert_eq!(name, "형식");
                     assert_eq!(args.len(), 3);
-                    assert!(matches!(&args[0], Expr::StringLiteral(template) if template == "이름: {0}, 나이: {1}"));
+                    assert!(
+                        matches!(&args[0], Expr::StringLiteral(template) if template == "이름: {0}, 나이: {1}")
+                    );
                     assert!(matches!(&args[1], Expr::Identifier(name) if name == "이름"));
                     assert!(matches!(&args[2], Expr::Identifier(name) if name == "나이"));
                 }
@@ -1447,7 +1449,9 @@ mod tests {
             StmtKind::ExprStmt(Expr::Call { name, args }) => {
                 assert_eq!(name, "형식");
                 assert_eq!(args.len(), 3);
-                assert!(matches!(&args[0], Expr::StringLiteral(template) if template == "{0} + {1}"));
+                assert!(
+                    matches!(&args[0], Expr::StringLiteral(template) if template == "{0} + {1}")
+                );
                 assert!(matches!(&args[1], Expr::Identifier(name) if name == "a"));
                 assert!(matches!(&args[2], Expr::Identifier(name) if name == "b"));
             }

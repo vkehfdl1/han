@@ -1,4 +1,4 @@
-// 문자열 보간 예제 (V2 신기능)
+// String interpolation examples (V2)
 
 변수 이름 = "홍길동"
 변수 나이 = 25

@@ -52,7 +52,7 @@
     }
 }
 
-// --- Attention 계산 ---
+// --- Attention computation ---
 
 // 3 tokens, d_k = 2
 변수 Q = [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]

@@ -1317,7 +1317,7 @@ fn eval_builtin_math(
                                         return Err(RuntimeError::new(
                                             "행렬곱: 숫자 타입 필요",
                                             line,
-                                        ))
+                                        ));
                                     }
                                 };
                                 let bv = match &b_rows[k] {
@@ -1330,7 +1330,7 @@ fn eval_builtin_math(
                                                 return Err(RuntimeError::new(
                                                     "행렬곱: 숫자 타입 필요",
                                                     line,
-                                                ))
+                                                ));
                                             }
                                         }
                                     }
@@ -1338,7 +1338,7 @@ fn eval_builtin_math(
                                         return Err(RuntimeError::new(
                                             "행렬곱: 2차원 배열 필요",
                                             line,
-                                        ))
+                                        ));
                                     }
                                 };
                                 sum += av * bv;
@@ -1635,7 +1635,7 @@ fn eval_builtin_math(
                             let b_row = match &b_rows[k] {
                                 Value::Array(r) => r.borrow().clone(),
                                 _ => {
-                                    return Err(RuntimeError::new("텐서곱: 2차원 배열 필요", line))
+                                    return Err(RuntimeError::new("텐서곱: 2차원 배열 필요", line));
                                 }
                             };
                             let mut row = Vec::with_capacity(an * bn);
@@ -2104,6 +2104,26 @@ mod tests {
         });
         eval_stmt(&stmt, &mut env).unwrap();
         assert!(matches!(env.get("x"), Some(Value::Int(1))));
+    }
+
+    #[test]
+    fn test_const_reassign_error() {
+        let mut env = Environment::new();
+        let decl = Stmt::unspanned(StmtKind::VarDecl {
+            name: "파이".to_string(),
+            ty: None,
+            value: Expr::FloatLiteral(3.14),
+            mutable: false,
+        });
+        eval_stmt(&decl, &mut env).unwrap();
+        assert!(env.is_const("파이"));
+
+        let assign_expr = Expr::Assign {
+            name: "파이".to_string(),
+            value: Box::new(Expr::FloatLiteral(3.0)),
+        };
+        let result = eval_expr(&assign_expr, &mut env, 2);
+        assert!(result.is_err());
     }
 
     #[test]

@@ -1374,6 +1374,32 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_imyeon_if_stmt() {
+        let tokens = tokenize("만약 x > 0 이면 { 출력(x) }");
+        let program = parse(tokens).unwrap();
+        assert_eq!(program.stmts.len(), 1);
+        assert!(matches!(program.stmts[0].kind, StmtKind::If { .. }));
+    }
+
+    #[test]
+    fn test_parse_imyeon_else_if() {
+        let tokens = tokenize(
+            "만약 x > 0 이면 { 출력(1) } 아니면 x < 0 이면 { 출력(2) } 아니면 { 출력(0) }",
+        );
+        let program = parse(tokens).unwrap();
+        assert_eq!(program.stmts.len(), 1);
+        assert!(matches!(program.stmts[0].kind, StmtKind::If { .. }));
+    }
+
+    #[test]
+    fn test_parse_sov_imyeon() {
+        let tokens = tokenize("x > 0 이면 { 출력(x) }");
+        let program = parse(tokens).unwrap();
+        assert_eq!(program.stmts.len(), 1);
+        assert!(matches!(program.stmts[0].kind, StmtKind::If { .. }));
+    }
+
+    #[test]
     fn test_parse_const_decl_with_type() {
         let src = "상수 최대값: 정수 = 100";
         let prog = parse_src(src);

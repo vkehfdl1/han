@@ -23,6 +23,16 @@ fn run_interpret(file: &str) -> String {
         .to_string()
 }
 
+fn interpret(code: &str) -> String {
+    han::interpreter::capture_start();
+
+    let tokens = han::lexer::tokenize(code);
+    let program = han::parser::parse(tokens).unwrap();
+    han::interpreter::interpret(program).unwrap();
+
+    han::interpreter::capture_flush().trim().to_string()
+}
+
 static BUILD_LOCK: Mutex<()> = Mutex::new(());
 
 fn build_and_run(source: &str, stem_prefix: &str) -> String {
@@ -107,6 +117,54 @@ fn test_even_odd() {
     assert_eq!(lines[0], "홀수");
     assert_eq!(lines[1], "짝수");
     assert_eq!(lines[9], "짝수");
+}
+
+#[test]
+fn test_imyeon_conditional() {
+    let out = interpret("변수 x = 10\n만약 x > 5 이면 {\n    출력(\"크다\")\n}\n");
+    assert_eq!(out.trim(), "크다");
+}
+
+#[test]
+fn test_const_immutability() {
+    let out = interpret("상수 x = 42\n출력(x)\n");
+    assert_eq!(out.trim(), "42");
+}
+
+#[test]
+fn test_contains_method() {
+    let out = interpret("변수 arr = [1, 2, 3]\n만약 arr.포함(2) 이면 {\n    출력(\"있다\")\n}\n");
+    assert_eq!(out.trim(), "있다");
+}
+
+#[test]
+fn test_builtin_dot_product() {
+    let out = interpret("출력(내적([1, 2, 3], [4, 5, 6]))\n");
+    assert_eq!(out.trim(), "32");
+}
+
+#[test]
+fn test_builtin_cross_product() {
+    let out = interpret("출력(외적([1, 0, 0], [0, 1, 0]))\n");
+    assert_eq!(out.trim(), "[0, 0, 1]");
+}
+
+#[test]
+fn test_builtin_scalar_multiply() {
+    let out = interpret("출력(스칼라곱([[1, 2], [3, 4]], 10))\n");
+    assert_eq!(out.trim(), "[[10, 20], [30, 40]]");
+}
+
+#[test]
+fn test_builtin_matrix_add() {
+    let out = interpret("출력(행렬합([[1, 2], [3, 4]], [[5, 6], [7, 8]]))\n");
+    assert_eq!(out.trim(), "[[6, 8], [10, 12]]");
+}
+
+#[test]
+fn test_builtin_identity_matrix() {
+    let out = interpret("출력(단위행렬(2))\n");
+    assert_eq!(out.trim(), "[[1, 0], [0, 1]]");
 }
 
 #[test]

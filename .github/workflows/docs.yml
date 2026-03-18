@@ -1,9 +1,9 @@
-name: Deploy Docs
+name: Deploy Docs & Playground
 
 on:
   push:
     branches: [main]
-    paths: ['docs/**', 'web/**']
+    paths: ['docs/**', 'web/**', 'src/**', 'Cargo.toml']
 
 permissions:
   contents: read
@@ -19,8 +19,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install mdBook
-        run: cargo install mdbook --version 0.4.52
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install tools
+        run: |
+          cargo install mdbook --version 0.4.52
+          cargo install wasm-pack
+
+      - name: Build WASM
+        run: wasm-pack build --target web --out-dir pkg -- --no-default-features
+
+      - name: Copy WASM to playground
+        run: |
+          cp pkg/han_bg.wasm web/han_bg.wasm
+          cp pkg/han.js web/han.js
 
       - name: Build docs
         run: cd docs && mdbook build

@@ -197,7 +197,6 @@ fn test_compiled_backend_lambda_outputs_value() {
 }
 
 #[test]
-#[ignore = "codegen: Korean identifiers in LLVM IR not yet supported"]
 fn test_compiled_backend_closure_captures_outer_variable() {
     let out = build_and_run(
         "변수 배수 = 3

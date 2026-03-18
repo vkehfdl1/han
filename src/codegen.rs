@@ -1,5 +1,17 @@
 use crate::ast::{BinaryOpKind, Expr, Program, Stmt, StmtKind, Type, UnaryOpKind};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+#[derive(Clone)]
+struct PendingLambdaBinding {
+    full_param_types: Vec<&'static str>,
+    captured_values: Vec<(String, &'static str)>,
+}
+
+#[derive(Clone)]
+struct LambdaBinding {
+    full_param_types: Vec<&'static str>,
+    captured_bindings: Vec<(String, &'static str)>,
+}
 
 pub struct CodeGen {
     output: String,
@@ -9,6 +21,7 @@ pub struct CodeGen {
     str_count: usize,
     loop_stack: Vec<(String, String)>,
     var_types: HashMap<String, &'static str>,
+    lambda_bindings: HashMap<String, LambdaBinding>,
     struct_defs: HashMap<String, Vec<String>>,
     enum_defs: HashMap<String, Vec<String>>,
     current_error_flag: Option<String>,
@@ -25,6 +38,7 @@ impl CodeGen {
             str_count: 0,
             loop_stack: Vec::new(),
             var_types: HashMap::new(),
+            lambda_bindings: HashMap::new(),
             struct_defs: HashMap::new(),
             enum_defs: HashMap::new(),
             current_error_flag: None,
@@ -129,6 +143,277 @@ impl CodeGen {
             Expr::Range { .. } => "i64*",
             Expr::Index { .. } => "i64",
             _ => "i64",
+        }
+    }
+
+    fn capture_binding_name(&mut self, owner_name: &str, capture_name: &str) -> String {
+        format!(
+            "__capture_{}_{}_{}",
+            Self::sanitize_ident(owner_name),
+            Self::sanitize_ident(capture_name),
+            self.fresh_label()
+        )
+    }
+
+    fn push_captured_identifier(
+        &self,
+        name: &str,
+        bound: &HashSet<String>,
+        captures: &mut Vec<String>,
+    ) {
+        if bound.contains(name) || !self.var_types.contains_key(name) {
+            return;
+        }
+        if captures.iter().any(|existing| existing == name) {
+            return;
+        }
+        captures.push(name.to_string());
+    }
+
+    fn collect_captures_in_expr(
+        &self,
+        expr: &Expr,
+        bound: &HashSet<String>,
+        captures: &mut Vec<String>,
+    ) {
+        match expr {
+            Expr::Identifier(name) => self.push_captured_identifier(name, bound, captures),
+            Expr::BinaryOp { left, right, .. } => {
+                self.collect_captures_in_expr(left, bound, captures);
+                self.collect_captures_in_expr(right, bound, captures);
+            }
+            Expr::UnaryOp { expr, .. } => self.collect_captures_in_expr(expr, bound, captures),
+            Expr::Call { name, args } => {
+                self.push_captured_identifier(name, bound, captures);
+                for arg in args {
+                    self.collect_captures_in_expr(arg, bound, captures);
+                }
+            }
+            Expr::Assign { name, value } => {
+                self.push_captured_identifier(name, bound, captures);
+                self.collect_captures_in_expr(value, bound, captures);
+            }
+            Expr::ArrayLiteral(elems) | Expr::TupleLiteral(elems) => {
+                for elem in elems {
+                    self.collect_captures_in_expr(elem, bound, captures);
+                }
+            }
+            Expr::Index { object, index } => {
+                self.collect_captures_in_expr(object, bound, captures);
+                self.collect_captures_in_expr(index, bound, captures);
+            }
+            Expr::IndexAssign {
+                object,
+                index,
+                value,
+            } => {
+                self.collect_captures_in_expr(object, bound, captures);
+                self.collect_captures_in_expr(index, bound, captures);
+                self.collect_captures_in_expr(value, bound, captures);
+            }
+            Expr::MethodCall { object, args, .. } => {
+                self.collect_captures_in_expr(object, bound, captures);
+                for arg in args {
+                    self.collect_captures_in_expr(arg, bound, captures);
+                }
+            }
+            Expr::FieldAccess { object, .. } | Expr::TupleIndex { object, .. } => {
+                self.collect_captures_in_expr(object, bound, captures);
+            }
+            Expr::StructLiteral { fields, .. } => {
+                for (_, field_expr) in fields {
+                    self.collect_captures_in_expr(field_expr, bound, captures);
+                }
+            }
+            Expr::FieldAssign { object, value, .. } => {
+                self.collect_captures_in_expr(object, bound, captures);
+                self.collect_captures_in_expr(value, bound, captures);
+            }
+            Expr::Range { start, end } => {
+                self.collect_captures_in_expr(start, bound, captures);
+                self.collect_captures_in_expr(end, bound, captures);
+            }
+            Expr::MapLiteral(entries) => {
+                for (key, value) in entries {
+                    self.collect_captures_in_expr(key, bound, captures);
+                    self.collect_captures_in_expr(value, bound, captures);
+                }
+            }
+            Expr::Lambda { .. }
+            | Expr::IntLiteral(_)
+            | Expr::FloatLiteral(_)
+            | Expr::StringLiteral(_)
+            | Expr::BoolLiteral(_)
+            | Expr::NullLiteral => {}
+        }
+    }
+
+    fn collect_captures_in_stmt(
+        &self,
+        stmt: &Stmt,
+        bound: &mut HashSet<String>,
+        captures: &mut Vec<String>,
+    ) {
+        match &stmt.kind {
+            StmtKind::VarDecl { name, value, .. } => {
+                self.collect_captures_in_expr(value, bound, captures);
+                bound.insert(name.clone());
+            }
+            StmtKind::FuncDef { name, .. } | StmtKind::StructDef { name, .. } => {
+                bound.insert(name.clone());
+            }
+            StmtKind::Return(Some(expr)) | StmtKind::ExprStmt(expr) => {
+                self.collect_captures_in_expr(expr, bound, captures);
+            }
+            StmtKind::Return(None) | StmtKind::Break | StmtKind::Continue => {}
+            StmtKind::If {
+                cond,
+                then_block,
+                else_block,
+            } => {
+                self.collect_captures_in_expr(cond, bound, captures);
+                let mut then_bound = bound.clone();
+                for stmt in then_block {
+                    self.collect_captures_in_stmt(stmt, &mut then_bound, captures);
+                }
+                if let Some(else_block) = else_block {
+                    let mut else_bound = bound.clone();
+                    for stmt in else_block {
+                        self.collect_captures_in_stmt(stmt, &mut else_bound, captures);
+                    }
+                }
+            }
+            StmtKind::ForLoop {
+                init,
+                cond,
+                step,
+                body,
+            } => {
+                let mut loop_bound = bound.clone();
+                self.collect_captures_in_stmt(init, &mut loop_bound, captures);
+                self.collect_captures_in_expr(cond, &loop_bound, captures);
+                for stmt in body {
+                    self.collect_captures_in_stmt(stmt, &mut loop_bound, captures);
+                }
+                self.collect_captures_in_stmt(step, &mut loop_bound, captures);
+            }
+            StmtKind::WhileLoop { cond, body } => {
+                self.collect_captures_in_expr(cond, bound, captures);
+                let mut loop_bound = bound.clone();
+                for stmt in body {
+                    self.collect_captures_in_stmt(stmt, &mut loop_bound, captures);
+                }
+            }
+            StmtKind::TryCatch {
+                try_block,
+                error_name,
+                catch_block,
+            } => {
+                let mut try_bound = bound.clone();
+                for stmt in try_block {
+                    self.collect_captures_in_stmt(stmt, &mut try_bound, captures);
+                }
+                let mut catch_bound = bound.clone();
+                catch_bound.insert(error_name.clone());
+                for stmt in catch_block {
+                    self.collect_captures_in_stmt(stmt, &mut catch_bound, captures);
+                }
+            }
+            StmtKind::Import(_) | StmtKind::EnumDef { .. } | StmtKind::ImplBlock { .. } => {}
+            StmtKind::ForIn {
+                var_name,
+                iterable,
+                body,
+            } => {
+                self.collect_captures_in_expr(iterable, bound, captures);
+                let mut loop_bound = bound.clone();
+                loop_bound.insert(var_name.clone());
+                for stmt in body {
+                    self.collect_captures_in_stmt(stmt, &mut loop_bound, captures);
+                }
+            }
+            StmtKind::Match { expr, arms } => {
+                self.collect_captures_in_expr(expr, bound, captures);
+                for arm in arms {
+                    let mut arm_bound = bound.clone();
+                    if let crate::ast::Pattern::Identifier(name) = &arm.pattern {
+                        arm_bound.insert(name.clone());
+                    }
+                    for stmt in &arm.body {
+                        self.collect_captures_in_stmt(stmt, &mut arm_bound, captures);
+                    }
+                }
+            }
+        }
+    }
+
+    fn find_captured_vars(
+        &self,
+        params: &[(String, Option<Type>)],
+        body: &[Stmt],
+    ) -> Vec<(String, &'static str)> {
+        let mut bound: HashSet<String> = params.iter().map(|(name, _)| name.clone()).collect();
+        let mut captures = Vec::new();
+        for stmt in body {
+            self.collect_captures_in_stmt(stmt, &mut bound, &mut captures);
+        }
+        captures
+            .into_iter()
+            .filter_map(|name| {
+                self.var_types
+                    .get(name.as_str())
+                    .copied()
+                    .map(|ty| (name, ty))
+            })
+            .collect()
+    }
+
+    fn describe_lambda_binding(
+        &self,
+        params: &[(String, Option<Type>)],
+        body: &[Stmt],
+    ) -> PendingLambdaBinding {
+        let captured_values = self.find_captured_vars(params, body);
+        let mut full_param_types: Vec<&'static str> = params
+            .iter()
+            .map(|(_, ty)| Self::llvm_type(ty.as_ref().unwrap_or(&Type::정수)))
+            .collect();
+        for (_, capture_ty) in &captured_values {
+            full_param_types.push(*capture_ty);
+        }
+        PendingLambdaBinding {
+            full_param_types,
+            captured_values,
+        }
+    }
+
+    fn materialize_lambda_binding(
+        &mut self,
+        owner_name: &str,
+        binding: PendingLambdaBinding,
+    ) -> LambdaBinding {
+        let mut captured_bindings = Vec::new();
+        for (capture_name, capture_ty) in binding.captured_values {
+            let binding_name = self.capture_binding_name(owner_name, &capture_name);
+            self.var_types.insert(binding_name.clone(), capture_ty);
+            self.emit(&format!(
+                "  {} = alloca {}",
+                Self::var_ptr(&binding_name),
+                capture_ty
+            ));
+            let capture_value = self.gen_expr(&Expr::Identifier(capture_name));
+            self.emit(&format!(
+                "  store {} {}, {}* {}",
+                capture_ty,
+                capture_value,
+                capture_ty,
+                Self::var_ptr(&binding_name)
+            ));
+            captured_bindings.push((binding_name, capture_ty));
+        }
+        LambdaBinding {
+            full_param_types: binding.full_param_types,
+            captured_bindings,
         }
     }
 
@@ -573,7 +858,31 @@ impl CodeGen {
             }
             Expr::Assign { name, value } => {
                 let var_ty = self.var_types.get(name.as_str()).copied().unwrap_or("i64");
+                let pending_binding = match value.as_ref() {
+                    Expr::Lambda { params, body } => {
+                        Some(self.describe_lambda_binding(params, body))
+                    }
+                    _ => None,
+                };
                 let val = self.gen_expr(value);
+                match value.as_ref() {
+                    Expr::Lambda { .. } => {
+                        if let Some(binding) = pending_binding {
+                            let binding = self.materialize_lambda_binding(name, binding);
+                            self.lambda_bindings.insert(name.clone(), binding);
+                        }
+                    }
+                    Expr::Identifier(source) => {
+                        if let Some(binding) = self.lambda_bindings.get(source.as_str()).cloned() {
+                            self.lambda_bindings.insert(name.clone(), binding);
+                        } else {
+                            self.lambda_bindings.remove(name.as_str());
+                        }
+                    }
+                    _ => {
+                        self.lambda_bindings.remove(name.as_str());
+                    }
+                }
                 self.emit(&format!(
                     "  store {} {}, {}* {}",
                     var_ty,
@@ -650,17 +959,27 @@ impl CodeGen {
                     return self.gen_print(args);
                 }
 
-                let arg_types: Vec<&str> = args.iter().map(|a| self.infer_type(a)).collect();
-                let arg_vals: Vec<String> = args.iter().map(|a| self.gen_expr(a)).collect();
-                let arg_str: String = arg_types
-                    .iter()
-                    .zip(arg_vals.iter())
-                    .map(|(ty, v)| format!("{} {}", ty, v))
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                let mut arg_types: Vec<&str> = args.iter().map(|a| self.infer_type(a)).collect();
+                let mut arg_vals: Vec<String> = args.iter().map(|a| self.gen_expr(a)).collect();
+                let arg_str = |types: &[&str], values: &[String]| {
+                    types
+                        .iter()
+                        .zip(values.iter())
+                        .map(|(ty, value)| format!("{} {}", ty, value))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
 
                 let t = self.fresh_temp();
                 if self.var_types.contains_key(name.as_str()) {
+                    let binding = self.lambda_bindings.get(name.as_str()).cloned();
+                    if let Some(binding) = binding.as_ref() {
+                        for (binding_name, binding_ty) in &binding.captured_bindings {
+                            arg_types.push(*binding_ty);
+                            arg_vals.push(self.gen_expr(&Expr::Identifier(binding_name.clone())));
+                        }
+                    }
+
                     let fn_ptr_i64 = self.fresh_temp();
                     self.emit(&format!(
                         "  {} = load i64, i64* {}",
@@ -668,22 +987,26 @@ impl CodeGen {
                         Self::var_ptr(name)
                     ));
                     let fn_ptr = self.fresh_temp();
-                    let param_types_str = arg_types
-                        .iter()
-                        .map(|t| t.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ");
+                    let param_types_str = binding
+                        .as_ref()
+                        .map(|binding| binding.full_param_types.join(", "))
+                        .unwrap_or_else(|| arg_types.join(", "));
                     self.emit(&format!(
                         "  {} = inttoptr i64 {} to i64 ({})*",
                         fn_ptr, fn_ptr_i64, param_types_str
                     ));
-                    self.emit(&format!("  {} = call i64 {}({})", t, fn_ptr, arg_str));
+                    self.emit(&format!(
+                        "  {} = call i64 {}({})",
+                        t,
+                        fn_ptr,
+                        arg_str(&arg_types, &arg_vals)
+                    ));
                 } else {
                     self.emit(&format!(
                         "  {} = call i64 @{}({})",
                         t,
                         Self::sanitize_ident(name),
-                        arg_str
+                        arg_str(&arg_types, &arg_vals)
                     ));
                 }
                 t
@@ -771,13 +1094,26 @@ impl CodeGen {
                 let lambda_name = format!("__lambda_{}", self.fresh_label());
                 let saved_output = std::mem::take(&mut self.output);
                 let saved_vars = self.var_types.clone();
+                let saved_lambda_bindings = self.lambda_bindings.clone();
                 let saved_error_flag = self.current_error_flag.clone();
                 let saved_error_msg = self.current_error_message.clone();
+                let binding = self.describe_lambda_binding(params, body);
 
-                let typed_params: Vec<(String, crate::ast::Type)> = params
+                let mut typed_params: Vec<(String, crate::ast::Type)> = params
                     .iter()
                     .map(|(name, ty)| (name.clone(), ty.clone().unwrap_or(crate::ast::Type::정수)))
                     .collect();
+                for (capture_name, capture_ty) in &binding.captured_values {
+                    typed_params.push((
+                        capture_name.clone(),
+                        match *capture_ty {
+                            "double" => crate::ast::Type::실수,
+                            "i8*" => crate::ast::Type::문자열,
+                            "i1" => crate::ast::Type::불,
+                            _ => crate::ast::Type::정수,
+                        },
+                    ));
+                }
                 self.gen_func(
                     &lambda_name,
                     &typed_params,
@@ -787,14 +1123,17 @@ impl CodeGen {
 
                 let lambda_output = std::mem::replace(&mut self.output, saved_output);
                 self.var_types = saved_vars;
+                self.lambda_bindings = saved_lambda_bindings;
                 self.current_error_flag = saved_error_flag;
                 self.current_error_message = saved_error_msg;
                 self.globals.push_str(&lambda_output);
 
                 let t = self.fresh_temp();
                 self.emit(&format!(
-                    "  {} = ptrtoint i64 (i64)* @{} to i64",
-                    t, lambda_name
+                    "  {} = ptrtoint i64 ({})* @{} to i64",
+                    t,
+                    binding.full_param_types.join(", "),
+                    lambda_name
                 ));
                 t
             }
@@ -981,9 +1320,33 @@ impl CodeGen {
                     .as_ref()
                     .map(|t| Self::llvm_type(t))
                     .unwrap_or_else(|| self.infer_type(value));
+                let pending_binding = match value {
+                    Expr::Lambda { params, body } => {
+                        Some(self.describe_lambda_binding(params, body))
+                    }
+                    _ => None,
+                };
+                let val = self.gen_expr(value);
                 self.var_types.insert(name.clone(), llvm_ty);
                 self.emit(&format!("  {} = alloca {}", Self::var_ptr(name), llvm_ty));
-                let val = self.gen_expr(value);
+                match value {
+                    Expr::Lambda { .. } => {
+                        if let Some(binding) = pending_binding {
+                            let binding = self.materialize_lambda_binding(name, binding);
+                            self.lambda_bindings.insert(name.clone(), binding);
+                        }
+                    }
+                    Expr::Identifier(source) => {
+                        if let Some(binding) = self.lambda_bindings.get(source.as_str()).cloned() {
+                            self.lambda_bindings.insert(name.clone(), binding);
+                        } else {
+                            self.lambda_bindings.remove(name.as_str());
+                        }
+                    }
+                    _ => {
+                        self.lambda_bindings.remove(name.as_str());
+                    }
+                }
                 self.emit(&format!(
                     "  store {} {}, {}* {}",
                     llvm_ty,
@@ -1268,6 +1631,7 @@ impl CodeGen {
             .join(", ");
 
         self.var_types.clear();
+        self.lambda_bindings.clear();
         self.emit(&format!(
             "define {} @{}({}) {{",
             ret_ty,
